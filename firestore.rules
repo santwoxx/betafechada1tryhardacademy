@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: players
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required)
+    //   - nickname: string (required, 1-20 chars)
+    //   - trophies: number (required, >= 0)
+    //   - pos: map {x: number, y: number}
+    //   - vel: map {x: number, y: number}
+    //   - lives: number
+    //   - ammo: number
+    //   - kills: number
+    //   - lastUpdate: number (timestamp)
+    //
+    // Collection: rooms
+    // Document ID: {roomId}
+    // Fields:
+    //   - id: string (required)
+    //   - status: string (required, 'waiting' | 'playing')
+    //   - players: list (required, max 2)
+    //   - createdAt: number (timestamp)
+    //
+    // Collection: rooms/{roomId}/projectiles
+    // Document ID: {projectileId}
+    // Fields:
+    //   - id: string (required)
+    //   - roomId: string (required)
+    //   - ownerId: string (required)
+    //   - pos: map {x: number, y: number}
+    //   - vel: map {x: number, y: number}
+    //   - createdAt: number (timestamp)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "natanmarinhocanalyt@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidNickname(name) {
+      return name is string && name.size() >= 1 && name.size() <= 20;
+    }
+
+    function isValidPlayer(data) {
+      return data.keys().hasAll(['uid', 'nickname', 'trophies']) &&
+             data.uid == request.auth.uid &&
+             isValidNickname(data.nickname) &&
+             data.trophies is number && data.trophies >= 0;
+    }
+
+    function isValidRoom(data) {
+      return data.keys().hasAll(['id', 'status', 'players']) &&
+             data.status in ['waiting', 'playing'] &&
+             data.players is list && data.players.size() <= 2;
+    }
+
+    function isValidProjectile(data) {
+      return data.keys().hasAll(['id', 'roomId', 'ownerId', 'pos', 'vel']) &&
+             data.ownerId == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /players/{uid} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(uid) && isValidPlayer(request.resource.data);
+      allow update: if isOwner(uid) && isValidPlayer(request.resource.data);
+    }
+
+    match /rooms/{roomId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidRoom(request.resource.data);
+      allow update: if isAuthenticated() && isValidRoom(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /rooms/{roomId}/projectiles/{projectileId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidProjectile(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

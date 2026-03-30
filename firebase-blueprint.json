@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "Player": {
+      "title": "Player",
+      "description": "Represents a player in the game.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique ID of the player." },
+        "nickname": { "type": "string", "description": "Display name of the player." },
+        "trophies": { "type": "integer", "description": "Number of trophies earned." },
+        "pos": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        },
+        "vel": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        },
+        "lives": { "type": "integer" },
+        "ammo": { "type": "integer" },
+        "kills": { "type": "integer" },
+        "lastUpdate": { "type": "integer", "description": "Timestamp of the last update." }
+      },
+      "required": ["uid", "nickname", "trophies"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "Represents a multiplayer game room.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "status": { "type": "string", "enum": ["waiting", "playing"] },
+        "players": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "integer" }
+      },
+      "required": ["id", "status", "players"]
+    },
+    "Projectile": {
+      "title": "Projectile",
+      "description": "Represents a projectile in a multiplayer room.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "roomId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "pos": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        },
+        "vel": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        },
+        "createdAt": { "type": "integer" }
+      },
+      "required": ["id", "roomId", "ownerId", "pos", "vel"]
+    }
+  },
+  "firestore": {
+    "/players/{uid}": { "schema": "Player", "description": "Global player data." },
+    "/rooms/{roomId}": { "schema": "Room", "description": "Active game rooms." },
+    "/rooms/{roomId}/projectiles/{projectileId}": { "schema": "Projectile", "description": "Projectiles in a specific room." }
+  }
+}

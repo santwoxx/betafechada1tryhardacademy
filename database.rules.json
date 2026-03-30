@@ -1,0 +1,29 @@
+{
+  "rules": {
+    "players": {
+      ".read": "auth != null",
+      ".indexOn": ["trophies"],
+      "$uid": {
+        ".write": "auth != null && auth.uid == $uid",
+        "nickname": { ".validate": "newData.isString() && newData.val().length <= 20" },
+        "trophies": { ".validate": "newData.isNumber()" },
+        "pos": { ".validate": "newData.hasChildren(['x', 'y'])" },
+        "vel": { ".validate": "newData.hasChildren(['x', 'y'])" }
+      }
+    },
+    "rooms": {
+      ".read": "auth != null",
+      ".indexOn": ["status"],
+      "$roomId": {
+        ".write": "auth != null",
+        "projectiles": {
+          ".read": "auth != null",
+          "$projId": {
+            ".write": "auth != null && (!data.exists() || data.child('ownerId').val() == auth.uid)",
+            ".validate": "newData.hasChildren(['ownerId', 'pos', 'vel'])"
+          }
+        }
+      }
+    }
+  }
+}
