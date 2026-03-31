@@ -21,7 +21,8 @@ import {
   equalTo,
   limitToLast,
   serverTimestamp,
-  remove
+  remove,
+  onDisconnect
 } from 'firebase/database';
 
 enum OperationType {
@@ -244,6 +245,13 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (showModal || showGameOver || gameState !== 'playing') {
+      if (gameRef.current) gameRef.current.setShooting(false);
+      setIsShootingMobile(false);
+    }
+  }, [showModal, showGameOver, gameState]);
+
   const updateStats = useCallback(() => {
     if (gameRef.current) {
       setStats({
@@ -310,6 +318,19 @@ export default function App() {
       (game.player as any).trophies = playerData?.trophies || 0;
     }
 
+    game.onPlayerHit = (victimId, damage) => {
+      if (game.isMultiplayer && game.isHost && room) {
+        const victimRef = ref(db, `rooms/${room.id}/players/${victimId}/lives`);
+        get(victimRef).then(snapshot => {
+          if (snapshot.exists()) {
+            const currentLives = snapshot.val();
+            const newLives = Math.max(0, currentLives - damage);
+            update(ref(db, `rooms/${room.id}/players/${victimId}`), { lives: newLives });
+          }
+        });
+      }
+    };
+
     game.onStarCollected = () => {
       const q = MathEngine.getInstance().generateQuestion();
       setCurrentQuestion(q);
@@ -357,6 +378,21 @@ export default function App() {
     if (room) {
       game.isMultiplayer = true;
       game.isHost = room.players[0] === user.uid;
+
+      // Listen for local player lives from Firebase in multiplayer
+      const myLivesRef = ref(db, `rooms/${room.id}/players/${user.uid}/lives`);
+      const livesUnsubscribe = onValue(myLivesRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const remoteLives = snapshot.val();
+          if (game.player.lives !== remoteLives) {
+            game.player.lives = remoteLives;
+            if (remoteLives <= 0 && !game.gameOver) {
+              game.gameOver = true;
+              game.onGameOver?.();
+            }
+          }
+        }
+      });
 
       // Listen for ALL players in the room
       const roomPlayersRef = ref(db, `rooms/${room.id}/players`);
@@ -428,11 +464,18 @@ export default function App() {
 
       // Cleanup listeners
       (game as any)._multiplayerCleanup = () => {
+        off(myLivesRef, 'value', livesUnsubscribe);
         off(roomPlayersRef, 'value', playersUnsubscribe);
         off(projRef, 'child_added', projUnsubscribe);
         if ((game as any)._botsCleanup) (game as any)._botsCleanup();
         // Remove self from room on exit
         remove(ref(db, `rooms/${room.id}/players/${user.uid}`));
+        // If host, maybe mark room as closed or check if empty
+        get(roomPlayersRef).then(snap => {
+          if (!snap.exists() || Object.keys(snap.val()).length === 0) {
+            remove(ref(db, `rooms/${room.id}`));
+          }
+        });
       };
     }
 
@@ -450,6 +493,31 @@ export default function App() {
     };
   }, [updateStats, gameState, user, room, nickname, playerData]);
 
+  // Reconnection logic
+  useEffect(() => {
+    const lastRoomId = localStorage.getItem('lastRoomId');
+    if (lastRoomId && user && gameState === 'menu') {
+      const roomRef = ref(db, `rooms/${lastRoomId}`);
+      get(roomRef).then(snapshot => {
+        if (snapshot.exists() && snapshot.val().status === 'playing') {
+          // Check if I'm still in the room
+          const myPlayerRef = ref(db, `rooms/${lastRoomId}/players/${user.uid}`);
+          get(myPlayerRef).then(pSnap => {
+            if (pSnap.exists()) {
+              const data = snapshot.val();
+              setRoom({ id: lastRoomId, ...data, players: Object.keys(data.players) });
+              setGameState('playing');
+            } else {
+              localStorage.removeItem('lastRoomId');
+            }
+          });
+        } else {
+          localStorage.removeItem('lastRoomId');
+        }
+      });
+    }
+  }, [user, gameState]);
+
   const handleStartGame = () => {
     setRoom(null);
     setGameState('playing');
@@ -462,7 +530,10 @@ export default function App() {
 
     const timeoutId = setTimeout(() => {
       setMatchmakingStatus('Nenhum jogador encontrado. Tente novamente.');
-      setTimeout(() => setGameState('menu'), 2000);
+      setTimeout(() => {
+        setGameState('menu');
+        setRoom(null);
+      }, 2000);
     }, 15000); // 15 seconds timeout
 
     try {
@@ -484,19 +555,24 @@ export default function App() {
             // Join room
             const playerRef = ref(db, `rooms/${roomId}/players/${user.uid}`);
             await set(playerRef, {
+              uid: user.uid,
               nickname,
               trophies: playerData?.trophies || 0,
               lives: 3,
-              ammo: 3,
+              ammo: 10,
               pos: { x: 400, y: 300 },
               lastUpdate: serverTimestamp()
             });
+
+            // Cleanup on disconnect
+            onDisconnect(playerRef).remove();
 
             await update(ref(db, `rooms/${roomId}`), {
               status: 'playing'
             });
             
             setRoom({ id: roomId, ...roomData, players: [...players, user.uid], status: 'playing' });
+            localStorage.setItem('lastRoomId', roomId);
             setMatchmakingStatus('Conectado!');
             roomFound = true;
             setTimeout(() => setGameState('playing'), 1000);
@@ -512,7 +588,8 @@ export default function App() {
         const newRoomData = {
           id: roomId,
           status: 'waiting',
-          createdAt: serverTimestamp()
+          createdAt: serverTimestamp(),
+          hostId: user.uid
         };
         
         await set(newRoomRef, newRoomData);
@@ -520,15 +597,21 @@ export default function App() {
         // Add self to players
         const playerRef = ref(db, `rooms/${roomId}/players/${user.uid}`);
         await set(playerRef, {
+          uid: user.uid,
           nickname,
           trophies: playerData?.trophies || 0,
           lives: 3,
-          ammo: 3,
+          ammo: 10,
           pos: { x: 100, y: 100 },
           lastUpdate: serverTimestamp()
         });
 
+        // Cleanup on disconnect
+        onDisconnect(playerRef).remove();
+        onDisconnect(newRoomRef).remove(); // If host disconnects while waiting, remove room
+
         setRoom({ ...newRoomData, players: [user.uid] });
+        localStorage.setItem('lastRoomId', roomId);
         
         // Listen for someone joining
         const roomStatusRef = ref(db, `rooms/${roomId}/status`);
@@ -957,6 +1040,11 @@ export default function App() {
                   if (gameRef.current) gameRef.current.setShooting(true);
                 }}
                 onTouchEnd={(e) => {
+                  e.preventDefault();
+                  setIsShootingMobile(false);
+                  if (gameRef.current) gameRef.current.setShooting(false);
+                }}
+                onTouchCancel={(e) => {
                   e.preventDefault();
                   setIsShootingMobile(false);
                   if (gameRef.current) gameRef.current.setShooting(false);

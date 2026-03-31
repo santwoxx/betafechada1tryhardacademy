@@ -474,6 +474,7 @@ export class Game {
     onGameOver?: () => void;
     onShoot?: (projectile: Projectile) => void;
     onBotUpdate?: (bots: any[]) => void;
+    onPlayerHit?: (victimId: string, damage: number, killerId: string) => void;
     starSpawnTimer: number = 0;
     kills: number = 0;
     fps: number = 60;
@@ -489,6 +490,11 @@ export class Game {
 
         window.addEventListener('keydown', (e) => this.keys[e.code] = true);
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
+        window.addEventListener('blur', () => {
+            this.keys = {};
+            this.isShooting = false;
+            this.joystickInput = { x: 0, y: 0 };
+        });
         
         this.loop = this.loop.bind(this);
     }
@@ -783,35 +789,66 @@ export class Game {
                 }
             });
 
-            if (p.owner === 'player') {
-                // Player projectile vs Remote Players
+            // Player vs Player Collisions (Host Authority)
+            if (!this.isMultiplayer || this.isHost) {
+                // Check local player
+                const dxLocal = p.pos.x - this.player.pos.x;
+                const dyLocal = p.pos.y - this.player.pos.y;
+                const distSqLocal = dxLocal * dxLocal + dyLocal * dyLocal;
+                const minDistLocal = p.radius + this.player.radius;
+
+                if (distSqLocal < minDistLocal * minDistLocal) {
+                    // Don't hit yourself if you just shot it
+                    if (p.ownerId !== (this.player as any).uid) {
+                        p.active = false;
+                        this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
+                        
+                        if (this.isMultiplayer && this.isHost) {
+                            if (this.onPlayerHit) this.onPlayerHit((this.player as any).uid, 1, p.ownerId || '');
+                        } else {
+                            this.player.lives--;
+                            if (this.quality === 'high') this.shake.shake(20);
+                            if (this.player.lives <= 0) {
+                                this.spawnParticles(this.player.pos.x, this.player.pos.y, this.player.color, 60, 6);
+                                this.gameOver = true;
+                                if (this.onGameOver) this.onGameOver();
+                            }
+                        }
+                    }
+                }
+
+                // Check remote players
                 this.remotePlayers.forEach(remote => {
                     const dx = p.pos.x - remote.pos.x;
                     const dy = p.pos.y - remote.pos.y;
                     const distSq = dx * dx + dy * dy;
                     const minDist = p.radius + remote.radius;
+
                     if (distSq < minDist * minDist) {
-                        p.active = false;
-                        this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
-                        if (this.quality === 'high') this.shake.shake(5);
+                        // Don't hit the owner
+                        if (p.ownerId !== remote.uid) {
+                            p.active = false;
+                            this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
+                            
+                            if (this.isMultiplayer && this.isHost) {
+                                if (this.onPlayerHit) this.onPlayerHit(remote.uid, 1, p.ownerId || '');
+                            } else {
+                                remote.lives--;
+                            }
+                        }
                     }
                 });
             } else {
-                // Bot or Remote projectile vs Local Player
+                // Non-host in multiplayer: only show visual effects for local player hits
+                // but don't decrement lives (wait for Firebase update)
                 const dx = p.pos.x - this.player.pos.x;
                 const dy = p.pos.y - this.player.pos.y;
                 const distSq = dx * dx + dy * dy;
                 const minDist = p.radius + this.player.radius;
-                if (distSq < minDist * minDist) {
+                if (distSq < minDist * minDist && p.ownerId !== (this.player as any).uid) {
                     p.active = false;
                     this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
-                    this.player.lives--;
-                    if (this.quality === 'high') this.shake.shake(20);
-                    if (this.player.lives <= 0) {
-                        this.spawnParticles(this.player.pos.x, this.player.pos.y, this.player.color, 60, 6);
-                        this.gameOver = true;
-                        if (this.onGameOver) this.onGameOver();
-                    }
+                    if (this.quality === 'high') this.shake.shake(10);
                 }
             }
         });
