@@ -1,6 +1,8 @@
 /**
  * TRYHARD ACADEMY - Game Engine
  * Pure JavaScript 2D Arena Base
+ * VERSÃO CORRIGIDA - HOST AUTHORITATIVE MULTIPLAYER
+ * Todas as correções de colisão, dano, bots e sincronização aplicadas
  */
 
 import { ParticlePool, Trail, ScreenShake, Lighting } from './effects';
@@ -409,7 +411,7 @@ export class RemotePlayer extends Player {
     trophies: number;
     targetPos: Point;
     targetVel: Point;
-    lerpFactor: number = 0.15;
+    lerpFactor: number = 0.18;
 
     constructor(uid: string, nickname: string, trophies: number, x: number, y: number) {
         super(x, y);
@@ -480,6 +482,8 @@ export class Game {
     fps: number = 60;
     fpsHistory: number[] = [];
 
+    private lastHitTimestamps: Map<string, number> = new Map(); // proteção contra double-hit
+
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d', { alpha: false })!; // Performance optimization
@@ -509,6 +513,7 @@ export class Game {
         this.gameOver = false;
         this.paused = false;
         this.starSpawnTimer = 0;
+        this.lastHitTimestamps.clear();
     }
 
     setQuality(quality: GraphicQuality) {
@@ -727,17 +732,16 @@ export class Game {
             this.shootTimer = this.shootInterval; // Ready to shoot immediately
         }
 
-        // Update Bots
+        // Update Bots - SOMENTE HOST controla e sincroniza bots
         if (!this.isMultiplayer || this.isHost) {
             this.bots.forEach((bot, index) => {
                 const angle = bot.update(this.player.pos, { width: this.canvas.width, height: this.canvas.height }, time);
                 if (angle !== null) {
-                    const p = this.projectilePool.spawn(bot.pos.x, bot.pos.y, angle as number, 'bot');
+                    const p = this.projectilePool.spawn(bot.pos.x, bot.pos.y, angle as number, 'bot', `bot_${index}`);
                     if (p) {
                         this.spawnParticles(p.pos.x, p.pos.y, p.color, 3, 1, false);
-                        if (this.isHost && this.onShoot) {
-                            // Sync bot projectile
-                            this.onShoot({ ...p, owner: 'bot', ownerId: `bot_${index}` } as any);
+                        if (this.onShoot) {
+                            this.onShoot(p);
                         }
                     }
                 }
@@ -760,10 +764,12 @@ export class Game {
         // Update Particles
         this.pool.update(dt);
 
-        // Collisions
+        // ==================== COLISÕES - HOST AUTHORITATIVE ====================
         const activeProjectiles = this.projectilePool.getActive();
+        const now = Date.now();
+
         activeProjectiles.forEach(p => {
-            // Projectile vs Bots
+            // Projectile vs Bots (host authority only)
             this.bots.forEach((bot, index) => {
                 if (bot.isDead) return;
                 const dx = p.pos.x - bot.pos.x;
@@ -789,35 +795,41 @@ export class Game {
                 }
             });
 
-            // Player vs Player Collisions (Host Authority)
+            // ==================== PLAYER VS PLAYER COLLISIONS ====================
             if (!this.isMultiplayer || this.isHost) {
-                // Check local player
-                const dxLocal = p.pos.x - this.player.pos.x;
-                const dyLocal = p.pos.y - this.player.pos.y;
-                const distSqLocal = dxLocal * dxLocal + dyLocal * dyLocal;
-                const minDistLocal = p.radius + this.player.radius;
+                // Local player hit check
+                {
+                    const dxLocal = p.pos.x - this.player.pos.x;
+                    const dyLocal = p.pos.y - this.player.pos.y;
+                    const distSqLocal = dxLocal * dxLocal + dyLocal * dyLocal;
+                    const minDistLocal = p.radius + this.player.radius;
 
-                if (distSqLocal < minDistLocal * minDistLocal) {
-                    // Don't hit yourself if you just shot it
-                    if (p.ownerId !== (this.player as any).uid) {
-                        p.active = false;
-                        this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
-                        
-                        if (this.isMultiplayer && this.isHost) {
-                            if (this.onPlayerHit) this.onPlayerHit((this.player as any).uid, 1, p.ownerId || '');
-                        } else {
-                            this.player.lives--;
-                            if (this.quality === 'high') this.shake.shake(20);
-                            if (this.player.lives <= 0) {
-                                this.spawnParticles(this.player.pos.x, this.player.pos.y, this.player.color, 60, 6);
-                                this.gameOver = true;
-                                if (this.onGameOver) this.onGameOver();
+                    if (distSqLocal < minDistLocal * minDistLocal) {
+                        // Não acertar a si mesmo
+                        if (p.ownerId !== (this.player as any).uid) {
+                            const victimKey = `local_${(this.player as any).uid}`;
+                            if (!this.lastHitTimestamps.has(victimKey) || now - this.lastHitTimestamps.get(victimKey)! > 150) {
+                                this.lastHitTimestamps.set(victimKey, now);
+                                p.active = false;
+                                this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
+                                
+                                if (this.isMultiplayer && this.isHost) {
+                                    if (this.onPlayerHit) this.onPlayerHit((this.player as any).uid, 1, p.ownerId || 'unknown');
+                                } else {
+                                    this.player.lives--;
+                                    if (this.quality === 'high') this.shake.shake(20);
+                                    if (this.player.lives <= 0) {
+                                        this.spawnParticles(this.player.pos.x, this.player.pos.y, this.player.color, 60, 6);
+                                        this.gameOver = true;
+                                        if (this.onGameOver) this.onGameOver();
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
-                // Check remote players
+                // Remote players hit check
                 this.remotePlayers.forEach(remote => {
                     const dx = p.pos.x - remote.pos.x;
                     const dy = p.pos.y - remote.pos.y;
@@ -825,30 +837,37 @@ export class Game {
                     const minDist = p.radius + remote.radius;
 
                     if (distSq < minDist * minDist) {
-                        // Don't hit the owner
+                        // Não acertar o dono do projétil
                         if (p.ownerId !== remote.uid) {
-                            p.active = false;
-                            this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
-                            
-                            if (this.isMultiplayer && this.isHost) {
-                                if (this.onPlayerHit) this.onPlayerHit(remote.uid, 1, p.ownerId || '');
-                            } else {
-                                remote.lives--;
+                            const victimKey = `remote_${remote.uid}`;
+                            if (!this.lastHitTimestamps.has(victimKey) || now - this.lastHitTimestamps.get(victimKey)! > 150) {
+                                this.lastHitTimestamps.set(victimKey, now);
+                                p.active = false;
+                                this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
+                                
+                                if (this.isMultiplayer && this.isHost) {
+                                    if (this.onPlayerHit) this.onPlayerHit(remote.uid, 1, p.ownerId || 'unknown');
+                                } else {
+                                    remote.lives--;
+                                }
                             }
                         }
                     }
                 });
             } else {
-                // Non-host in multiplayer: only show visual effects for local player hits
-                // but don't decrement lives (wait for Firebase update)
+                // Non-host: apenas efeitos visuais para hits no jogador local
                 const dx = p.pos.x - this.player.pos.x;
                 const dy = p.pos.y - this.player.pos.y;
                 const distSq = dx * dx + dy * dy;
                 const minDist = p.radius + this.player.radius;
                 if (distSq < minDist * minDist && p.ownerId !== (this.player as any).uid) {
-                    p.active = false;
-                    this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
-                    if (this.quality === 'high') this.shake.shake(10);
+                    const victimKey = `local_${(this.player as any).uid}`;
+                    if (!this.lastHitTimestamps.has(victimKey) || now - this.lastHitTimestamps.get(victimKey)! > 150) {
+                        this.lastHitTimestamps.set(victimKey, now);
+                        p.active = false;
+                        this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
+                        if (this.quality === 'high') this.shake.shake(10);
+                    }
                 }
             }
         });
@@ -871,6 +890,14 @@ export class Game {
         // Cleanup
         this.stars = this.stars.filter(s => !s.isDead);
         this.bots = this.bots.filter(b => !b.isDead);
+
+        // Limpeza periódica do anti-double-hit
+        if (this.lastHitTimestamps.size > 20) {
+            const cutoff = now - 1000;
+            for (const [key, ts] of this.lastHitTimestamps) {
+                if (ts < cutoff) this.lastHitTimestamps.delete(key);
+            }
+        }
     }
 
     private draw() {
