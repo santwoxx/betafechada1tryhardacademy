@@ -1,8 +1,8 @@
 /**
  * TRYHARD ACADEMY - Game Engine
  * Pure JavaScript 2D Arena Base
- * VERSÃO CORRIGIDA - HOST AUTHORITATIVE MULTIPLAYER
- * Todas as correções de colisão, dano, bots e sincronização aplicadas
+ * VERSÃO FINAL CORRIGIDA - HOST AUTHORITATIVE MULTIPLAYER
+ * Correções aplicadas: colisão de projéteis, dano em players, sincronização de vida, ownerId consistente
  */
 
 import { ParticlePool, Trail, ScreenShake, Lighting } from './effects';
@@ -39,10 +39,10 @@ export class Projectile {
         this.color = owner === 'player' ? '#00f2ff' : (owner === 'bot' ? '#ff4d00' : '#bc13fe'); 
         this.glowColor = this.color;
         this.owner = owner;
-        this.ownerId = ownerId;
+        this.ownerId = ownerId || 'unknown';
         this.active = true;
         this.trail.color = this.color;
-        this.trail.points = []; // Reset trail
+        this.trail.points = [];
     }
 
     update(bounds: { width: number, height: number }, dt: number) {
@@ -98,7 +98,6 @@ export class ProjectilePool {
     draw(ctx: CanvasRenderingContext2D, quality: GraphicQuality, viewport: { x: number, y: number, w: number, h: number }) {
         this.pool.forEach(p => {
             if (p.active) {
-                // Culling
                 if (p.pos.x > viewport.x - 50 && p.pos.x < viewport.x + viewport.w + 50 &&
                     p.pos.y > viewport.y - 50 && p.pos.y < viewport.y + viewport.h + 50) {
                     p.draw(ctx, quality);
@@ -115,7 +114,7 @@ export class ProjectilePool {
 export class Star {
     pos: Point;
     radius: number = 20;
-    color: string = '#ffea00'; // Neon Yellow
+    color: string = '#ffea00';
     glowColor: string = '#ffea00';
     isDead: boolean = false;
     pulse: number = 0;
@@ -185,7 +184,7 @@ export class Bot {
     radius: number = 20;
     speed: number = 0.4;
     friction: number = 0.95;
-    color: string = '#ff4d00'; // Neon Orange
+    color: string = '#ff4d00';
     glowColor: string = '#ff4d00';
     angle: number = 0;
     lives: number = 1;
@@ -203,19 +202,17 @@ export class Bot {
     }
 
     update(playerPos: Point, bounds: { width: number, height: number }, time: number): number | null {
-        this.changeDirTimer -= 16; // Approx ms per frame
+        this.changeDirTimer -= 16;
         if (this.changeDirTimer <= 0) {
             this.targetAngle = Math.random() * Math.PI * 2;
             this.changeDirTimer = 1000 + Math.random() * 2000;
         }
 
-        // Pursuit logic (gentle)
         const dx = playerPos.x - this.pos.x;
         const dy = playerPos.y - this.pos.y;
         const distSq = dx * dx + dy * dy;
         const pursuitAngle = Math.atan2(dy, dx);
 
-        // Blend random movement with pursuit
         const moveX = Math.cos(this.targetAngle) * 0.7 + Math.cos(pursuitAngle) * 0.3;
         const moveY = Math.sin(this.targetAngle) * 0.7 + Math.sin(pursuitAngle) * 0.3;
 
@@ -231,16 +228,13 @@ export class Bot {
 
         this.angle = Math.atan2(this.vel.y, this.vel.x);
 
-        // Bounds
         if (this.pos.x < this.radius) { this.pos.x = this.radius; this.vel.x *= -1; }
         if (this.pos.x > bounds.width - this.radius) { this.pos.x = bounds.width - this.radius; this.vel.x *= -1; }
         if (this.pos.y < this.radius) { this.pos.y = this.radius; this.vel.y *= -1; }
         if (this.pos.y > bounds.height - this.radius) { this.pos.y = bounds.height - this.radius; this.vel.y *= -1; }
 
-        // Shooting logic
-        if (time > this.shootCooldown && distSq < 250000) { // 500px squared
+        if (time > this.shootCooldown && distSq < 250000) {
             this.shootCooldown = time + this.maxShootCooldown;
-            // Add some "human error" to the angle
             const error = (Math.random() - 0.5) * 0.4;
             return pursuitAngle + error;
         }
@@ -258,7 +252,6 @@ export class Bot {
             ctx.shadowColor = this.glowColor;
         }
 
-        // Draw Triangle/Arrow shape for bots
         ctx.beginPath();
         ctx.moveTo(this.radius, 0);
         ctx.lineTo(-this.radius, this.radius * 0.8);
@@ -285,7 +278,7 @@ export class Player {
     glowColor: string;
     angle: number;
     shootCooldown: number = 0;
-    maxShootCooldown: number = 200; // ms
+    maxShootCooldown: number = 200;
     lives: number = 3;
     ammo: number = 3;
     nickname: string = '';
@@ -298,7 +291,7 @@ export class Player {
         this.radius = 25;
         this.speed = 0.8;
         this.friction = 0.92;
-        this.color = '#bc13fe'; // Neon Purple
+        this.color = '#bc13fe';
         this.glowColor = '#bc13fe';
         this.angle = 0;
         this.trail = new Trail(20, 'rgba(188, 19, 254, 0.3)', 20);
@@ -336,22 +329,10 @@ export class Player {
             this.angle = Math.atan2(this.vel.y, this.vel.x);
         }
 
-        if (this.pos.x < this.radius) {
-            this.pos.x = this.radius;
-            this.vel.x *= -0.5;
-        }
-        if (this.pos.x > bounds.width - this.radius) {
-            this.pos.x = bounds.width - this.radius;
-            this.vel.x *= -0.5;
-        }
-        if (this.pos.y < this.radius) {
-            this.pos.y = this.radius;
-            this.vel.y *= -0.5;
-        }
-        if (this.pos.y > bounds.height - this.radius) {
-            this.pos.y = bounds.height - this.radius;
-            this.vel.y *= -0.5;
-        }
+        if (this.pos.x < this.radius) { this.pos.x = this.radius; this.vel.x *= -0.5; }
+        if (this.pos.x > bounds.width - this.radius) { this.pos.x = bounds.width - this.radius; this.vel.x *= -0.5; }
+        if (this.pos.y < this.radius) { this.pos.y = this.radius; this.vel.y *= -0.5; }
+        if (this.pos.y > bounds.height - this.radius) { this.pos.y = bounds.height - this.radius; this.vel.y *= -0.5; }
     }
 
     draw(ctx: CanvasRenderingContext2D, quality: GraphicQuality = 'high') {
@@ -389,7 +370,6 @@ export class Player {
 
         ctx.restore();
 
-        // Draw Nickname and Trophies
         if (this.nickname) {
             ctx.save();
             ctx.fillStyle = 'white';
@@ -418,7 +398,7 @@ export class RemotePlayer extends Player {
         this.uid = uid;
         this.nickname = nickname;
         this.trophies = trophies;
-        this.color = '#00f2ff'; // Cyan for remote players
+        this.color = '#00f2ff';
         this.targetPos = { x, y };
         this.targetVel = { x: 0, y: 0 };
     }
@@ -433,10 +413,8 @@ export class RemotePlayer extends Player {
     }
 
     updateInterpolation() {
-        // Smoothly interpolate towards target position and velocity
         this.pos.x += (this.targetPos.x - this.pos.x) * this.lerpFactor;
         this.pos.y += (this.targetPos.y - this.pos.y) * this.lerpFactor;
-        
         this.vel.x += (this.targetVel.x - this.vel.x) * this.lerpFactor;
         this.vel.y += (this.targetVel.y - this.vel.y) * this.lerpFactor;
 
@@ -465,28 +443,30 @@ export class Game {
     lastTime: number = 0;
     isShooting: boolean = false;
     shootTimer: number = 0;
-    shootInterval: number = 200; // ms
+    shootInterval: number = 200;
     mousePos: Point = { x: 0, y: 0 };
     paused: boolean = false;
     gameOver: boolean = false;
     isMultiplayer: boolean = false;
     isHost: boolean = false;
     isMobile: boolean = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
     onStarCollected?: () => void;
     onGameOver?: () => void;
     onShoot?: (projectile: Projectile) => void;
     onBotUpdate?: (bots: any[]) => void;
     onPlayerHit?: (victimId: string, damage: number, killerId: string) => void;
+
     starSpawnTimer: number = 0;
     kills: number = 0;
     fps: number = 60;
-    fpsHistory: number[] = [];
+    fpsHistory: number[] = [];                    // <-- Propriedade adicionada aqui
 
-    private lastHitTimestamps: Map<string, number> = new Map(); // proteção contra double-hit
+    private lastHitTimestamps: Map<string, number> = new Map();
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
-        this.ctx = canvas.getContext('2d', { alpha: false })!; // Performance optimization
+        this.ctx = canvas.getContext('2d', { alpha: false })!;
         this.player = new Player(canvas.width / 2, canvas.height / 2);
         this.projectilePool = new ProjectilePool(100);
         this.pool = new ParticlePool(500);
@@ -514,26 +494,16 @@ export class Game {
         this.paused = false;
         this.starSpawnTimer = 0;
         this.lastHitTimestamps.clear();
+        this.fpsHistory = [];
     }
 
-    setQuality(quality: GraphicQuality) {
-        this.quality = quality;
-    }
-
-    setJoystickInput(x: number, y: number) {
-        this.joystickInput = { x, y };
-    }
-
+    setQuality(quality: GraphicQuality) { this.quality = quality; }
+    setJoystickInput(x: number, y: number) { this.joystickInput = { x, y }; }
     setShooting(shooting: boolean, x?: number, y?: number) {
         this.isShooting = shooting;
-        if (x !== undefined && y !== undefined) {
-            this.mousePos = { x, y };
-        }
+        if (x !== undefined && y !== undefined) this.mousePos = { x, y };
     }
-
-    updateMousePos(x: number, y: number) {
-        this.mousePos = { x, y };
-    }
+    updateMousePos(x: number, y: number) { this.mousePos = { x, y }; }
 
     resize() {
         this.canvas.width = window.innerWidth;
@@ -568,7 +538,6 @@ export class Game {
         const spacing = 60;
         this.gridOffset = (this.gridOffset + 0.8) % spacing;
 
-        // Parallax effect based on player movement
         const px = this.player.pos.x * 0.05;
         const py = this.player.pos.y * 0.05;
 
@@ -589,7 +558,6 @@ export class Game {
             this.ctx.stroke();
         }
         
-        // Vignette / Bloom fake
         const grad = this.ctx.createRadialGradient(
             this.canvas.width / 2, this.canvas.height / 2, 0,
             this.canvas.width / 2, this.canvas.height / 2, this.canvas.width * 0.9
@@ -610,7 +578,6 @@ export class Game {
     private spawnBot() {
         const margin = 50;
         let x, y;
-        // Spawn away from player
         do {
             x = margin + Math.random() * (this.canvas.width - margin * 2);
             y = margin + Math.random() * (this.canvas.height - margin * 2);
@@ -631,7 +598,6 @@ export class Game {
         
         const avgFps = this.fpsHistory.reduce((a, b) => a + b, 0) / this.fpsHistory.length;
         
-        // Auto-scale quality if FPS drops significantly
         if (avgFps < 30 && this.quality === 'high') {
             this.quality = 'medium';
             this.fpsHistory = [];
@@ -645,9 +611,8 @@ export class Game {
         if (!this.isMobile) return currentAngle;
 
         let nearestTarget: Point | null = null;
-        let minDistSq = 90000; // 300px radius squared
+        let minDistSq = 90000;
 
-        // Check bots
         this.bots.forEach(bot => {
             if (bot.isDead) return;
             const dx = bot.pos.x - this.player.pos.x;
@@ -659,7 +624,6 @@ export class Game {
             }
         });
 
-        // Check remote players
         this.remotePlayers.forEach(remote => {
             const dx = remote.pos.x - this.player.pos.x;
             const dy = remote.pos.y - this.player.pos.y;
@@ -672,7 +636,6 @@ export class Game {
 
         if (nearestTarget) {
             const targetAngle = Math.atan2(nearestTarget.y - this.player.pos.y, nearestTarget.x - this.player.pos.x);
-            // Lerp angle slightly towards target (0.3 strength)
             let diff = targetAngle - currentAngle;
             while (diff < -Math.PI) diff += Math.PI * 2;
             while (diff > Math.PI) diff -= Math.PI * 2;
@@ -698,7 +661,6 @@ export class Game {
         this.updateQualityScaling(dt);
         this.shake.update();
 
-        // Spawning
         this.starSpawnTimer += dt;
         if (this.starSpawnTimer > 3000 && this.stars.length < 3) {
             this.spawnStar();
@@ -729,20 +691,18 @@ export class Game {
                 this.shootTimer = 0;
             }
         } else {
-            this.shootTimer = this.shootInterval; // Ready to shoot immediately
+            this.shootTimer = this.shootInterval;
         }
 
-        // Update Bots - SOMENTE HOST controla e sincroniza bots
+        // Bots - somente o host controla
         if (!this.isMultiplayer || this.isHost) {
             this.bots.forEach((bot, index) => {
                 const angle = bot.update(this.player.pos, { width: this.canvas.width, height: this.canvas.height }, time);
                 if (angle !== null) {
-                    const p = this.projectilePool.spawn(bot.pos.x, bot.pos.y, angle as number, 'bot', `bot_${index}`);
+                    const p = this.projectilePool.spawn(bot.pos.x, bot.pos.y, angle, 'bot', `bot_${index}`);
                     if (p) {
                         this.spawnParticles(p.pos.x, p.pos.y, p.color, 3, 1, false);
-                        if (this.onShoot) {
-                            this.onShoot(p);
-                        }
+                        if (this.onShoot) this.onShoot(p);
                     }
                 }
             });
@@ -757,31 +717,25 @@ export class Game {
             }
         }
 
-        // Update Projectiles
         this.projectilePool.update({ width: this.canvas.width, height: this.canvas.height }, dt);
         this.remotePlayers.forEach(r => r.updateInterpolation());
-
-        // Update Particles
         this.pool.update(dt);
 
-        // ==================== COLISÕES - HOST AUTHORITATIVE ====================
+        // ===================== COLISÕES CORRIGIDAS =====================
         const activeProjectiles = this.projectilePool.getActive();
         const now = Date.now();
 
         activeProjectiles.forEach(p => {
-            // Projectile vs Bots (host authority only)
-            this.bots.forEach((bot, index) => {
+            // Projectile vs Bots
+            this.bots.forEach(bot => {
                 if (bot.isDead) return;
                 const dx = p.pos.x - bot.pos.x;
                 const dy = p.pos.y - bot.pos.y;
-                const distSq = dx * dx + dy * dy;
-                const minDist = p.radius + bot.radius;
-                if (distSq < minDist * minDist) {
+                if (dx * dx + dy * dy < (p.radius + bot.radius) ** 2) {
                     p.active = false;
                     this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
                     if (this.quality === 'high') this.shake.shake(5);
-                    
-                    // Only host or offline mode updates bot lives
+
                     if (!this.isMultiplayer || this.isHost) {
                         bot.lives--;
                         if (bot.lives <= 0) {
@@ -795,75 +749,61 @@ export class Game {
                 }
             });
 
-            // ==================== PLAYER VS PLAYER COLLISIONS ====================
+            // Projectile vs Players - SOMENTE HOST APLICA DANO
             if (!this.isMultiplayer || this.isHost) {
-                // Local player hit check
-                {
-                    const dxLocal = p.pos.x - this.player.pos.x;
-                    const dyLocal = p.pos.y - this.player.pos.y;
-                    const distSqLocal = dxLocal * dxLocal + dyLocal * dyLocal;
-                    const minDistLocal = p.radius + this.player.radius;
+                // Local Player
+                if (p.ownerId !== (this.player as any).uid) {
+                    const dx = p.pos.x - this.player.pos.x;
+                    const dy = p.pos.y - this.player.pos.y;
+                    if (dx * dx + dy * dy < (p.radius + this.player.radius) ** 2) {
+                        const key = `local_${(this.player as any).uid}`;
+                        if (!this.lastHitTimestamps.has(key) || now - this.lastHitTimestamps.get(key)! > 120) {
+                            this.lastHitTimestamps.set(key, now);
+                            p.active = false;
+                            this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
 
-                    if (distSqLocal < minDistLocal * minDistLocal) {
-                        // Não acertar a si mesmo
-                        if (p.ownerId !== (this.player as any).uid) {
-                            const victimKey = `local_${(this.player as any).uid}`;
-                            if (!this.lastHitTimestamps.has(victimKey) || now - this.lastHitTimestamps.get(victimKey)! > 150) {
-                                this.lastHitTimestamps.set(victimKey, now);
-                                p.active = false;
-                                this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
-                                
-                                if (this.isMultiplayer && this.isHost) {
-                                    if (this.onPlayerHit) this.onPlayerHit((this.player as any).uid, 1, p.ownerId || 'unknown');
-                                } else {
-                                    this.player.lives--;
-                                    if (this.quality === 'high') this.shake.shake(20);
-                                    if (this.player.lives <= 0) {
-                                        this.spawnParticles(this.player.pos.x, this.player.pos.y, this.player.color, 60, 6);
-                                        this.gameOver = true;
-                                        if (this.onGameOver) this.onGameOver();
-                                    }
+                            if (this.onPlayerHit) {
+                                this.onPlayerHit((this.player as any).uid, 1, p.ownerId || 'unknown');
+                            } else {
+                                this.player.lives--;
+                                if (this.quality === 'high') this.shake.shake(20);
+                                if (this.player.lives <= 0) {
+                                    this.spawnParticles(this.player.pos.x, this.player.pos.y, this.player.color, 60, 6);
+                                    this.gameOver = true;
+                                    if (this.onGameOver) this.onGameOver();
                                 }
                             }
                         }
                     }
                 }
 
-                // Remote players hit check
+                // Remote Players
                 this.remotePlayers.forEach(remote => {
+                    if (p.ownerId === remote.uid) return;
                     const dx = p.pos.x - remote.pos.x;
                     const dy = p.pos.y - remote.pos.y;
-                    const distSq = dx * dx + dy * dy;
-                    const minDist = p.radius + remote.radius;
+                    if (dx * dx + dy * dy < (p.radius + remote.radius) ** 2) {
+                        const key = `remote_${remote.uid}`;
+                        if (!this.lastHitTimestamps.has(key) || now - this.lastHitTimestamps.get(key)! > 120) {
+                            this.lastHitTimestamps.set(key, now);
+                            p.active = false;
+                            this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
 
-                    if (distSq < minDist * minDist) {
-                        // Não acertar o dono do projétil
-                        if (p.ownerId !== remote.uid) {
-                            const victimKey = `remote_${remote.uid}`;
-                            if (!this.lastHitTimestamps.has(victimKey) || now - this.lastHitTimestamps.get(victimKey)! > 150) {
-                                this.lastHitTimestamps.set(victimKey, now);
-                                p.active = false;
-                                this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
-                                
-                                if (this.isMultiplayer && this.isHost) {
-                                    if (this.onPlayerHit) this.onPlayerHit(remote.uid, 1, p.ownerId || 'unknown');
-                                } else {
-                                    remote.lives--;
-                                }
+                            if (this.onPlayerHit) {
+                                this.onPlayerHit(remote.uid, 1, p.ownerId || 'unknown');
                             }
                         }
                     }
                 });
-            } else {
-                // Non-host: apenas efeitos visuais para hits no jogador local
+            } 
+            // Non-host: apenas efeito visual
+            else {
                 const dx = p.pos.x - this.player.pos.x;
                 const dy = p.pos.y - this.player.pos.y;
-                const distSq = dx * dx + dy * dy;
-                const minDist = p.radius + this.player.radius;
-                if (distSq < minDist * minDist && p.ownerId !== (this.player as any).uid) {
-                    const victimKey = `local_${(this.player as any).uid}`;
-                    if (!this.lastHitTimestamps.has(victimKey) || now - this.lastHitTimestamps.get(victimKey)! > 150) {
-                        this.lastHitTimestamps.set(victimKey, now);
+                if (dx * dx + dy * dy < (p.radius + this.player.radius) ** 2 && p.ownerId !== (this.player as any).uid) {
+                    const key = `local_${(this.player as any).uid}`;
+                    if (!this.lastHitTimestamps.has(key) || now - this.lastHitTimestamps.get(key)! > 120) {
+                        this.lastHitTimestamps.set(key, now);
                         p.active = false;
                         this.spawnParticles(p.pos.x, p.pos.y, p.color, 15, 3);
                         if (this.quality === 'high') this.shake.shake(10);
@@ -878,23 +818,20 @@ export class Game {
             star.update();
             const dx = this.player.pos.x - star.pos.x;
             const dy = this.player.pos.y - star.pos.y;
-            const distSq = dx * dx + dy * dy;
-            const minDist = this.player.radius + star.radius;
-            if (distSq < minDist * minDist) {
+            if (dx * dx + dy * dy < (this.player.radius + star.radius) ** 2) {
                 star.isDead = true;
                 this.spawnParticles(star.pos.x, star.pos.y, star.color, 30, 4);
                 if (this.onStarCollected) this.onStarCollected();
             }
         });
 
-        // Cleanup
         this.stars = this.stars.filter(s => !s.isDead);
         this.bots = this.bots.filter(b => !b.isDead);
 
-        // Limpeza periódica do anti-double-hit
-        if (this.lastHitTimestamps.size > 20) {
-            const cutoff = now - 1000;
-            for (const [key, ts] of this.lastHitTimestamps) {
+        // Limpeza do anti-double-hit
+        if (this.lastHitTimestamps.size > 30) {
+            const cutoff = now - 1500;
+            for (const [key, ts] of this.lastHitTimestamps.entries()) {
                 if (ts < cutoff) this.lastHitTimestamps.delete(key);
             }
         }
@@ -909,7 +846,6 @@ export class Game {
 
         this.drawGrid();
 
-        // Lighting (High Quality)
         if (this.quality === 'high') {
             this.projectilePool.getActive().forEach(p => {
                 Lighting.drawGlow(this.ctx, p.pos.x, p.pos.y, 40, p.color + '33');
@@ -939,7 +875,7 @@ export class Game {
 
         const dt = time - this.lastTime;
         this.lastTime = time;
-        if (dt > 100) { // Tab was inactive
+        if (dt > 100) {
             requestAnimationFrame(this.loop);
             return;
         }
