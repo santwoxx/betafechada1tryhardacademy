@@ -11,11 +11,9 @@ import {
   set,
   update,
   onValue,
-  off,
   push,
   onChildAdded,
   get,
-  child,
   query,
   orderByChild,
   equalTo,
@@ -152,6 +150,27 @@ export default function App() {
   const lastSyncTimeRef = useRef<number>(0);
   const lastSentStateRef = useRef<{ pos: Point; vel: Point; lives: number; ammo: number } | null>(null);
 
+  const userRef = useRef(user);
+  const roomRef = useRef(room);
+  const nicknameRef = useRef(nickname);
+  const playerDataRef = useRef(playerData);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
+
+  useEffect(() => {
+    nicknameRef.current = nickname;
+  }, [nickname]);
+
+  useEffect(() => {
+    playerDataRef.current = playerData;
+  }, [playerData]);
+
   // Audio Unlock on first interaction
   useEffect(() => {
     const handleInteraction = () => {
@@ -230,7 +249,7 @@ export default function App() {
     }, (error) => {
       handleDatabaseError(error, OperationType.LIST, 'players');
     });
-    return () => off(ref(db, 'players'), 'value', unsubscribe);
+    return unsubscribe;
   }, [user]);
 
   const handleLogin = async () => {
@@ -261,7 +280,7 @@ export default function App() {
       });
 
       // Sync local player state to Firebase if in multiplayer
-      if (gameRef.current.isMultiplayer && user && room) {
+      if (gameRef.current.isMultiplayer && userRef.current && roomRef.current) {
         const now = Date.now();
         // Throttle to ~20 FPS (every 50ms)
         if (now - lastSyncTimeRef.current >= 50) {
@@ -271,8 +290,8 @@ export default function App() {
             vel: { x: Number(player.vel.x.toFixed(1)), y: Number(player.vel.y.toFixed(1)) },
             lives: player.lives,
             ammo: player.ammo,
-            nickname: nickname,
-            trophies: playerData?.trophies || 0
+            nickname: nicknameRef.current,
+            trophies: playerDataRef.current?.trophies || 0
           };
 
           // Only sync if state changed significantly
@@ -289,7 +308,7 @@ export default function App() {
             lastSyncTimeRef.current = now;
             lastSentStateRef.current = currentState as any;
             
-            const playerRef = ref(db, `rooms/${room.id}/players/${user.uid}`);
+            const playerRef = ref(db, `rooms/${roomRef.current.id}/players/${userRef.current.uid}`);
             update(playerRef, {
               ...currentState,
               lastUpdate: serverTimestamp()
@@ -300,7 +319,7 @@ export default function App() {
         }
       }
     }
-  }, [user, room]);
+  }, []);
 
   useEffect(() => {
     if (!canvasRef.current || gameState !== 'playing') return;
@@ -311,21 +330,21 @@ export default function App() {
     setIsTouch(isMobileDevice);
     gameRef.current = game;
     
-    if (user) {
+    if (userRef.current) {
       game.setQuality(quality);
-      (game.player as any).uid = user.uid;
-      (game.player as any).nickname = nickname;
-      (game.player as any).trophies = playerData?.trophies || 0;
+      (game.player as any).uid = userRef.current.uid;
+      (game.player as any).nickname = nicknameRef.current;
+      (game.player as any).trophies = playerDataRef.current?.trophies || 0;
     }
 
     game.onPlayerHit = (victimId, damage) => {
-      if (game.isMultiplayer && game.isHost && room) {
-        const victimRef = ref(db, `rooms/${room.id}/players/${victimId}/lives`);
+      if (game.isMultiplayer && game.isHost && roomRef.current) {
+        const victimRef = ref(db, `rooms/${roomRef.current.id}/players/${victimId}/lives`);
         get(victimRef).then(snapshot => {
           if (snapshot.exists()) {
             const currentLives = snapshot.val();
             const newLives = Math.max(0, currentLives - damage);
-            update(ref(db, `rooms/${room.id}/players/${victimId}`), { lives: newLives });
+            update(ref(db, `rooms/${roomRef.current!.id}/players/${victimId}`), { lives: newLives });
           }
         });
       }
@@ -340,18 +359,18 @@ export default function App() {
 
     game.onShoot = (p) => {
       AudioManager.getInstance().play('shoot');
-      if (room && user) {
-        const projectilesRef = ref(db, `rooms/${room.id}/projectiles`);
+      if (roomRef.current && userRef.current) {
+        const projectilesRef = ref(db, `rooms/${roomRef.current.id}/projectiles`);
         const newProjRef = push(projectilesRef);
         set(newProjRef, {
           id: newProjRef.key,
-          roomId: room.id,
-          ownerId: p.ownerId || user.uid,
+          roomId: roomRef.current.id,
+          ownerId: p.ownerId || userRef.current.uid,
           ownerType: p.owner,
           pos: p.pos,
           vel: p.vel,
           createdAt: serverTimestamp()
-        }).catch(error => handleDatabaseError(error, OperationType.WRITE, `rooms/${room.id}/projectiles/${newProjRef.key}`));
+        }).catch(error => handleDatabaseError(error, OperationType.WRITE, `rooms/${roomRef.current!.id}/projectiles/${newProjRef.key}`));
         // Auto-delete projectile doc after 2 seconds
         setTimeout(() => remove(newProjRef).catch(() => {}), 2000);
       }
@@ -360,27 +379,29 @@ export default function App() {
     game.onGameOver = async () => {
       AudioManager.getInstance().play('death');
       setShowGameOver(true);
-      if (game.isMultiplayer && user && room) {
+      if (game.isMultiplayer && userRef.current && roomRef.current) {
         // Update trophies: -1 on defeat
-        const playerRef = ref(db, `players/${user.uid}`);
-        const newTrophies = Math.max(0, (playerData?.trophies || 0) - 1);
+        const playerRef = ref(db, `players/${userRef.current.uid}`);
+        const newTrophies = Math.max(0, (playerDataRef.current?.trophies || 0) - 1);
         try {
           await update(playerRef, { trophies: newTrophies });
-          setPlayerData({ ...playerData, trophies: newTrophies });
+          setPlayerData({ ...playerDataRef.current, trophies: newTrophies });
           // Also update room status to end if needed, or just leave
-          remove(ref(db, `rooms/${room.id}/players/${user.uid}`));
+          remove(ref(db, `rooms/${roomRef.current.id}/players/${userRef.current.uid}`));
         } catch (error) {
-          handleDatabaseError(error, OperationType.UPDATE, `players/${user.uid}`);
+          handleDatabaseError(error, OperationType.UPDATE, `players/${userRef.current.uid}`);
         }
       }
     };
 
-    if (room) {
+    let multiplayerCleanup: (() => void) | null = null;
+
+    if (roomRef.current) {
       game.isMultiplayer = true;
-      game.isHost = room.players[0] === user.uid;
+      game.isHost = roomRef.current.players[0] === userRef.current!.uid;
 
       // Listen for local player lives from Firebase in multiplayer
-      const myLivesRef = ref(db, `rooms/${room.id}/players/${user.uid}/lives`);
+      const myLivesRef = ref(db, `rooms/${roomRef.current.id}/players/${userRef.current!.uid}/lives`);
       const livesUnsubscribe = onValue(myLivesRef, (snapshot) => {
         if (snapshot.exists()) {
           const remoteLives = snapshot.val();
@@ -395,12 +416,12 @@ export default function App() {
       });
 
       // Listen for ALL players in the room
-      const roomPlayersRef = ref(db, `rooms/${room.id}/players`);
+      const roomPlayersRef = ref(db, `rooms/${roomRef.current.id}/players`);
       const playersUnsubscribe = onValue(roomPlayersRef, (snapshot) => {
         if (snapshot.exists()) {
           const playersData = snapshot.val();
           for (const uid in playersData) {
-            if (uid !== user.uid) {
+            if (uid !== userRef.current!.uid) {
               const data = playersData[uid];
               let remote = game.remotePlayers.get(uid);
               if (!remote) {
@@ -416,10 +437,10 @@ export default function App() {
                 AudioManager.getInstance().play('victory');
                 setShowVictory(true);
                 // Update trophies: +3 on victory
-                const playerRef = ref(db, `players/${user.uid}`);
-                const newTrophies = (playerData?.trophies || 0) + 3;
+                const playerRef = ref(db, `players/${userRef.current!.uid}`);
+                const newTrophies = (playerDataRef.current?.trophies || 0) + 3;
                 update(playerRef, { trophies: newTrophies }).then(() => {
-                  setPlayerData({ ...playerData, trophies: newTrophies });
+                  setPlayerData({ ...playerDataRef.current, trophies: newTrophies });
                 });
               }
             }
@@ -434,14 +455,15 @@ export default function App() {
       });
 
       // Host updates bots
+      let botsUnsubscribe: (() => void) | null = null;
       if (game.isHost) {
         game.onBotUpdate = (bots) => {
-          update(ref(db, `rooms/${room.id}`), { bots });
+          update(ref(db, `rooms/${roomRef.current!.id}`), { bots });
         };
       } else {
         // Others listen to bots
-        const botsRef = ref(db, `rooms/${room.id}/bots`);
-        const botsUnsubscribe = onValue(botsRef, (snapshot) => {
+        const botsRef = ref(db, `rooms/${roomRef.current.id}/bots`);
+        botsUnsubscribe = onValue(botsRef, (snapshot) => {
           if (snapshot.exists()) {
             const botsData = snapshot.val();
             botsData.forEach((data: any, i: number) => {
@@ -449,34 +471,35 @@ export default function App() {
             });
           }
         });
-        (game as any)._botsCleanup = () => off(botsRef, 'value', botsUnsubscribe);
       }
 
       // Listen for remote projectiles
-      const projRef = ref(db, `rooms/${room.id}/projectiles`);
+      const projRef = ref(db, `rooms/${roomRef.current.id}/projectiles`);
       const projUnsubscribe = onChildAdded(projRef, (snapshot) => {
         const data = snapshot.val();
-        if (data.ownerId !== user.uid) {
+        if (data.ownerId !== userRef.current!.uid) {
           const angle = Math.atan2(data.vel.y, data.vel.x);
           game.projectilePool.spawn(data.pos.x, data.pos.y, angle, data.ownerType || 'remote', data.ownerId);
         }
       });
 
       // Cleanup listeners
-      (game as any)._multiplayerCleanup = () => {
-        off(myLivesRef, 'value', livesUnsubscribe);
-        off(roomPlayersRef, 'value', playersUnsubscribe);
-        off(projRef, 'child_added', projUnsubscribe);
-        if ((game as any)._botsCleanup) (game as any)._botsCleanup();
+      multiplayerCleanup = () => {
+        livesUnsubscribe();
+        playersUnsubscribe();
+        projUnsubscribe();
+        if (botsUnsubscribe) botsUnsubscribe();
         // Remove self from room on exit
-        remove(ref(db, `rooms/${room.id}/players/${user.uid}`));
+        remove(ref(db, `rooms/${roomRef.current!.id}/players/${userRef.current!.uid}`));
         // If host, maybe mark room as closed or check if empty
         get(roomPlayersRef).then(snap => {
-          if (!snap.exists() || Object.keys(snap.val()).length === 0) {
-            remove(ref(db, `rooms/${room.id}`));
+          if (!snap.exists() || Object.keys(snap.val() || {}).length === 0) {
+            remove(ref(db, `rooms/${roomRef.current!.id}`));
           }
         });
       };
+
+      (game as any)._multiplayerCleanup = multiplayerCleanup;
     }
 
     game.start();
@@ -489,9 +512,13 @@ export default function App() {
     return () => {
       window.removeEventListener('resize', handleResize);
       clearInterval(statsInterval);
-      if ((game as any)._multiplayerCleanup) (game as any)._multiplayerCleanup();
+      if (multiplayerCleanup) {
+        multiplayerCleanup();
+      }
+      if ((game as any)._multiplayerCleanup) delete (game as any)._multiplayerCleanup;
+      gameRef.current = null;
     };
-  }, [updateStats, gameState, user, room, nickname, playerData]);
+  }, [gameState]);
 
   // Reconnection logic
   useEffect(() => {
@@ -505,7 +532,7 @@ export default function App() {
           get(myPlayerRef).then(pSnap => {
             if (pSnap.exists()) {
               const data = snapshot.val();
-              setRoom({ id: lastRoomId, ...data, players: Object.keys(data.players) });
+              setRoom({ id: lastRoomId, ...data, players: Object.keys(data.players || {}) });
               setGameState('playing');
             } else {
               localStorage.removeItem('lastRoomId');
@@ -615,16 +642,16 @@ export default function App() {
         
         // Listen for someone joining
         const roomStatusRef = ref(db, `rooms/${roomId}/status`);
-        const unsubscribe = onValue(roomStatusRef, (snapshot) => {
+        const statusUnsubscribe = onValue(roomStatusRef, (snapshot) => {
           const status = snapshot.val();
           if (status === 'playing') {
             clearTimeout(timeoutId);
             setMatchmakingStatus('Conectado!');
-            off(roomStatusRef, 'value', unsubscribe);
+            statusUnsubscribe();
             // Refresh room data
             get(ref(db, `rooms/${roomId}`)).then(snap => {
               const data = snap.val();
-              setRoom({ id: roomId, ...data, players: Object.keys(data.players) });
+              setRoom({ id: roomId, ...data, players: Object.keys(data.players || {}) });
               setTimeout(() => setGameState('playing'), 1000);
             });
           }

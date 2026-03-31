@@ -11,6 +11,9 @@ export interface Question {
 export class MathEngine {
     private static instance: MathEngine;
     private performanceHistory: { correct: boolean; difficulty: Difficulty }[] = [];
+    private recentQuestionTexts: string[] = [];
+    private readonly MAX_RECENT = 8;
+    private readonly MAX_HISTORY = 20;
 
     private constructor() {}
 
@@ -21,33 +24,37 @@ export class MathEngine {
         return MathEngine.instance;
     }
 
-    recordPerformance(correct: boolean, difficulty: Difficulty) {
+    recordPerformance(correct: boolean, difficulty: Difficulty): void {
         this.performanceHistory.push({ correct, difficulty });
-        if (this.performanceHistory.length > 20) {
+        if (this.performanceHistory.length > this.MAX_HISTORY) {
             this.performanceHistory.shift();
         }
     }
 
     getSuggestedDifficulty(): Difficulty {
-        if (this.performanceHistory.length < 3) return 'easy';
-
-        const recent = this.performanceHistory.slice(-5);
-        const correctCount = recent.filter(p => p.correct).length;
-        const accuracy = correctCount / recent.length;
-
-        const currentDifficulty = recent[recent.length - 1].difficulty;
-
-        if (accuracy >= 0.8) {
-            if (currentDifficulty === 'easy') return 'medium';
-            if (currentDifficulty === 'medium') return 'hard';
-            return 'hard';
-        } else if (accuracy <= 0.4) {
-            if (currentDifficulty === 'hard') return 'medium';
-            if (currentDifficulty === 'medium') return 'easy';
+        if (this.performanceHistory.length < 4) {
             return 'easy';
         }
 
-        return currentDifficulty;
+        const recent = this.performanceHistory.slice(-8);
+        const correctCount = recent.filter(p => p.correct).length;
+        const accuracy = correctCount / recent.length;
+
+        const lastDifficulty = recent[recent.length - 1].difficulty;
+
+        // More stable adaptive logic
+        if (accuracy >= 0.78) {
+            if (lastDifficulty === 'easy') return 'medium';
+            if (lastDifficulty === 'medium') return 'hard';
+            return 'hard';
+        } 
+        if (accuracy <= 0.42) {
+            if (lastDifficulty === 'hard') return 'medium';
+            if (lastDifficulty === 'medium') return 'easy';
+            return 'easy';
+        }
+
+        return lastDifficulty;
     }
 
     getStats() {
@@ -62,144 +69,179 @@ export class MathEngine {
         return {
             total,
             correct,
-            accuracy: total > 0 ? (correct / total) * 100 : 0,
+            accuracy: total > 0 ? Math.round((correct / total) * 100) : 0,
             byDifficulty
         };
     }
 
     generateQuestion(difficulty?: Difficulty): Question {
-        const diff = difficulty || this.getSuggestedDifficulty();
+        const targetDifficulty = difficulty || this.getSuggestedDifficulty();
         
-        switch (diff) {
-            case 'hard':
-                return this.generateHardQuestion();
-            case 'medium':
-                return this.generateMediumQuestion();
-            case 'easy':
-            default:
-                return this.generateEasyQuestion();
+        let question: Question;
+        let attempts = 0;
+        const maxAttempts = 12;
+
+        do {
+            switch (targetDifficulty) {
+                case 'hard':
+                    question = this.generateHardQuestion();
+                    break;
+                case 'medium':
+                    question = this.generateMediumQuestion();
+                    break;
+                case 'easy':
+                default:
+                    question = this.generateEasyQuestion();
+            }
+            attempts++;
+        } while (this.recentQuestionTexts.includes(question.text) && attempts < maxAttempts);
+
+        // Update recent questions to avoid repetition
+        this.recentQuestionTexts.push(question.text);
+        if (this.recentQuestionTexts.length > this.MAX_RECENT) {
+            this.recentQuestionTexts.shift();
         }
+
+        return question;
     }
 
     private generateEasyQuestion(): Question {
-        const isAddition = Math.random() > 0.5;
-        let a, b, answer, text, explanation;
+        const operations = ['add', 'subtract'] as const;
+        const op = operations[Math.floor(Math.random() * operations.length)];
 
-        if (isAddition) {
-            a = Math.floor(Math.random() * 30) + 1;
-            b = Math.floor(Math.random() * 30) + 1;
+        let a: number, b: number, answer: number, text: string, explanation: string;
+
+        if (op === 'add') {
+            a = Math.floor(Math.random() * 25) + 5;
+            b = Math.floor(Math.random() * 25) + 5;
             answer = a + b;
             text = `${a} + ${b}`;
-            explanation = `${a} mais ${b} resulta em ${answer}.`;
+            explanation = `${a} mais ${b} é igual a ${answer}.`;
         } else {
-            a = Math.floor(Math.random() * 50) + 10;
-            b = Math.floor(Math.random() * a) + 1;
+            a = Math.floor(Math.random() * 40) + 15;
+            b = Math.floor(Math.random() * 20) + 5;
             answer = a - b;
             text = `${a} - ${b}`;
-            explanation = `Subtraindo ${b} de ${a}, restam ${answer}.`;
+            explanation = `Subtraindo ${b} de ${a} resulta em ${answer}.`;
         }
 
         return {
             text,
+            options: this.generateOptions(answer, 'easy'),
             answer,
-            options: this.generateOptions(answer),
             explanation,
             difficulty: 'easy'
         };
     }
 
     private generateMediumQuestion(): Question {
-        const isMultiplication = Math.random() > 0.4;
-        let a, b, answer, text, explanation;
+        const operations = ['multiply', 'divide'] as const;
+        const op = operations[Math.floor(Math.random() * operations.length)];
 
-        if (isMultiplication) {
-            a = Math.floor(Math.random() * 12) + 2;
-            b = Math.floor(Math.random() * 10) + 2;
+        let a: number, b: number, answer: number, text: string, explanation: string;
+
+        if (op === 'multiply') {
+            a = Math.floor(Math.random() * 9) + 3;
+            b = Math.floor(Math.random() * 9) + 3;
             answer = a * b;
             text = `${a} × ${b}`;
-            explanation = `${a} vezes ${b} é igual a ${answer}.`;
+            explanation = `${a} multiplicado por ${b} resulta em ${answer}.`;
         } else {
-            b = Math.floor(Math.random() * 10) + 2;
-            answer = Math.floor(Math.random() * 10) + 2;
+            b = Math.floor(Math.random() * 8) + 3;
+            answer = Math.floor(Math.random() * 9) + 4;
             a = b * answer;
             text = `${a} ÷ ${b}`;
-            explanation = `${a} dividido por ${b} dá ${answer}.`;
+            explanation = `${a} dividido por ${b} é igual a ${answer}.`;
         }
 
         return {
             text,
+            options: this.generateOptions(answer, 'medium'),
             answer,
-            options: this.generateOptions(answer),
             explanation,
             difficulty: 'medium'
         };
     }
 
     private generateHardQuestion(): Question {
-        // Expressions like a + b * c or (a + b) * c
-        const type = Math.floor(Math.random() * 3);
-        let a, b, c, answer, text, explanation;
+        const types = [0, 1, 2] as const;
+        const type = types[Math.floor(Math.random() * types.length)];
 
-        if (type === 0) {
-            // a + b * c
-            b = Math.floor(Math.random() * 8) + 2;
-            c = Math.floor(Math.random() * 6) + 2;
-            a = Math.floor(Math.random() * 20) + 1;
+        let a: number, b: number, c: number, answer: number, text: string, explanation: string;
+
+        if (type === 0) { // a + b × c
+            a = Math.floor(Math.random() * 18) + 5;
+            b = Math.floor(Math.random() * 7) + 3;
+            c = Math.floor(Math.random() * 6) + 3;
             answer = a + (b * c);
             text = `${a} + ${b} × ${c}`;
-            explanation = `Primeiro multiplicamos: ${b} × ${c} = ${b * c}. Depois somamos: ${a} + ${b * c} = ${answer}.`;
-        } else if (type === 1) {
-            // a * b - c
-            a = Math.floor(Math.random() * 10) + 2;
-            b = Math.floor(Math.random() * 8) + 2;
-            c = Math.floor(Math.random() * (a * b - 1)) + 1;
+            explanation = `Multiplicação primeiro: ${b} × ${c} = ${b*c}. Depois ${a} + ${b*c} = ${answer}.`;
+        } else if (type === 1) { // a × b - c
+            a = Math.floor(Math.random() * 8) + 3;
+            b = Math.floor(Math.random() * 7) + 3;
+            c = Math.floor(Math.random() * 12) + 4;
             answer = (a * b) - c;
             text = `${a} × ${b} - ${c}`;
-            explanation = `Primeiro multiplicamos: ${a} × ${b} = ${a * b}. Depois subtraímos: ${a * b} - ${c} = ${answer}.`;
-        } else {
-            // (a + b) * c
-            a = Math.floor(Math.random() * 10) + 1;
-            b = Math.floor(Math.random() * 10) + 1;
-            c = Math.floor(Math.random() * 5) + 2;
+            explanation = `Primeiro ${a} × ${b} = ${a*b}. Depois ${a*b} - ${c} = ${answer}.`;
+        } else { // (a + b) × c
+            a = Math.floor(Math.random() * 12) + 3;
+            b = Math.floor(Math.random() * 10) + 3;
+            c = Math.floor(Math.random() * 5) + 3;
             answer = (a + b) * c;
             text = `(${a} + ${b}) × ${c}`;
-            explanation = `Primeiro resolvemos os parênteses: ${a} + ${b} = ${a + b}. Depois multiplicamos: ${a + b} × ${c} = ${answer}.`;
+            explanation = `Parênteses primeiro: ${a} + ${b} = ${a+b}. Depois multiplicado por ${c} = ${answer}.`;
         }
 
         return {
             text,
+            options: this.generateOptions(answer, 'hard'),
             answer,
-            options: this.generateOptions(answer),
             explanation,
             difficulty: 'hard'
         };
     }
 
-    private generateOptions(answer: number): number[] {
-        const options = new Set<number>();
-        options.add(answer);
+    private generateOptions(answer: number, difficulty: Difficulty): number[] {
+        const options = new Set<number>([answer]);
+        let range: number;
 
+        switch (difficulty) {
+            case 'easy':
+                range = 12;
+                break;
+            case 'medium':
+                range = 20;
+                break;
+            case 'hard':
+                range = 30;
+                break;
+        }
+
+        // Close values (very plausible mistakes)
+        const closeOffsets = [-2, -1, 1, 2, -5, 5];
+        for (const offset of closeOffsets) {
+            if (options.size >= 4) break;
+            const candidate = answer + offset;
+            if (candidate >= 0) options.add(candidate);
+        }
+
+        // Common calculation errors
+        if (difficulty !== 'easy') {
+            if (options.size < 4) options.add(answer * 2);
+            if (options.size < 4 && answer > 4) options.add(Math.floor(answer / 2));
+        }
+
+        // Larger variations
         while (options.size < 4) {
-            let offset;
-            const rand = Math.random();
-            
-            if (rand < 0.3) {
-                // Close numbers
-                offset = Math.floor(Math.random() * 6) - 3;
-            } else if (rand < 0.6) {
-                // Common mistakes (off by 10)
-                offset = (Math.random() > 0.5 ? 10 : -10);
-            } else {
-                // Random but related
-                offset = Math.floor(Math.random() * 20) - 10;
-            }
-
-            const opt = answer + offset;
-            if (opt >= 0 && opt !== answer) {
-                options.add(opt);
+            const offset = Math.floor(Math.random() * range * 2) - range;
+            const candidate = answer + offset;
+            if (candidate >= 0 && candidate !== answer) {
+                options.add(candidate);
             }
         }
 
-        return Array.from(options).sort(() => Math.random() - 0.5);
+        // Convert to array and shuffle
+        const optionArray = Array.from(options).slice(0, 4);
+        return optionArray.sort(() => Math.random() - 0.5);
     }
 }
