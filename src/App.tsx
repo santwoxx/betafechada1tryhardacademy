@@ -1064,7 +1064,6 @@ export default function App() {
         </>
       )}
 
-      {/* Todo o resto da UI (lobby, settings, leaderboard, victory, gameover, modal) permanece exatamente igual */}
       <AnimatePresence>
         {gameState === 'lobby' && (
           <motion.div 
@@ -1089,7 +1088,236 @@ export default function App() {
           </motion.div>
         )}
 
-        {/* ... (todo o resto do return permanece idêntico ao que você enviou) ... */}
+        {showSettings && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-[#0a0a0a] border border-white/10 p-8 rounded-3xl w-full max-w-sm shadow-2xl"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <h2 className="text-xl font-black uppercase tracking-widest text-white">Ajustes</h2>
+                <button onClick={() => setShowSettings(false)}><X className="w-5 h-5 text-white/50" /></button>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-widest text-white/40 mb-2 font-bold">Seu Nickname</label>
+                  <input 
+                    type="text" 
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value.slice(0, 20))}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white font-bold tracking-widest focus:outline-none focus:border-[#bc13fe] transition-all"
+                    placeholder="Digite seu nick..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase tracking-widest text-white/40 mb-2 font-bold">Qualidade Gráfica</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['low', 'medium', 'high'] as GraphicQuality[]).map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => setQuality(q)}
+                        className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                          quality === q 
+                            ? 'bg-[#bc13fe] border-[#bc13fe] text-white shadow-[0_0_15px_rgba(188,19,254,0.3)]' 
+                            : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
+                        }`}
+                      >
+                        {q === 'low' ? 'Baixo' : q === 'medium' ? 'Médio' : 'Alto'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button 
+                  onClick={saveSettings}
+                  className="w-full py-4 bg-[#bc13fe] text-white rounded-xl font-black uppercase tracking-widest shadow-[0_0_20px_rgba(188,19,254,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {showLeaderboard && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-[#0a0a0a] border border-white/10 p-8 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <h2 className="text-xl font-black uppercase tracking-widest text-white flex items-center gap-3">
+                  <Trophy className="w-6 h-6 text-[#ffea00]" />
+                  Ranking Global
+                </h2>
+                <button onClick={() => setShowLeaderboard(false)}><X className="w-5 h-5 text-white/50" /></button>
+              </div>
+
+              <div className="space-y-2 overflow-y-auto pr-2 custom-scrollbar">
+                {leaderboard.map((player, i) => (
+                  <div 
+                    key={player.uid}
+                    className={`flex items-center justify-between p-4 rounded-2xl border ${player.uid === user?.uid ? 'bg-[#bc13fe]/10 border-[#bc13fe]/50' : 'bg-white/5 border-white/5'}`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <span className={`text-xs font-black ${i < 3 ? 'text-[#ffea00]' : 'text-white/30'}`}>#{i + 1}</span>
+                      <span className="text-sm font-bold text-white tracking-widest uppercase">{player.nickname}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Trophy className="w-3 h-3 text-[#00f2ff]" />
+                      <span className="text-sm font-black text-[#00f2ff]">{player.trophies}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {showVictory && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[160] flex items-center justify-center bg-black/80 backdrop-blur-xl p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.5, rotate: -10 }}
+              animate={{ scale: 1, rotate: 0 }}
+              className="relative bg-gradient-to-b from-[#1a1a1a] to-black border-2 border-[#ffea00] p-12 rounded-[3rem] w-full max-w-md text-center shadow-[0_0_100px_rgba(255,234,0,0.3)] overflow-hidden"
+            >
+              <div className="absolute -top-24 -left-24 w-48 h-48 bg-[#ffea00] blur-[100px] opacity-20" />
+              <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-[#bc13fe] blur-[100px] opacity-20" />
+
+              <motion.div
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.3 }}
+              >
+                <Trophy className="w-24 h-24 text-[#ffea00] mx-auto mb-6 drop-shadow-[0_0_20px_rgba(255,234,0,0.6)]" />
+              </motion.div>
+
+              <motion.h2 
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.5, type: 'spring' }}
+                className="text-[#ffea00] text-6xl font-black uppercase tracking-tighter mb-2 italic"
+              >
+                VITÓRIA!
+              </motion.h2>
+              <p className="text-white/60 text-sm uppercase tracking-[0.3em] mb-10">Você dominou a arena</p>
+              
+              <div className="flex justify-center gap-4 mb-12">
+                {[1, 2, 3].map((i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ scale: 0, y: 20 }}
+                    animate={{ scale: 1, y: 0 }}
+                    transition={{ delay: 0.7 + (i * 0.1), type: 'spring' }}
+                    className="flex flex-col items-center"
+                  >
+                    <Trophy className="w-10 h-10 text-[#ffea00] mb-2" />
+                    <span className="text-[#ffea00] font-black">+1</span>
+                  </motion.div>
+                ))}
+              </div>
+
+              <motion.button
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 1.2 }}
+                onClick={() => {
+                  setShowVictory(false);
+                  setGameState('menu');
+                }}
+                className="w-full py-5 bg-[#ffea00] text-black rounded-2xl font-black uppercase tracking-widest shadow-[0_0_30px_rgba(255,234,0,0.4)] hover:scale-105 active:scale-95 transition-all"
+              >
+                Voltar ao Menu
+              </motion.button>
+            </motion.div>
+
+            <div className="absolute inset-0 pointer-events-none">
+              {Array.from({ length: 30 }).map((_, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ 
+                    x: Math.random() * window.innerWidth, 
+                    y: window.innerHeight + 10,
+                    rotate: 0,
+                    opacity: 1
+                  }}
+                  animate={{ 
+                    y: -100,
+                    rotate: 360,
+                    opacity: 0
+                  }}
+                  transition={{ 
+                    duration: 2 + Math.random() * 3,
+                    repeat: Infinity,
+                    delay: Math.random() * 5
+                  }}
+                  className="absolute w-2 h-2 bg-[#ffea00] rounded-sm"
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {showGameOver && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.8, y: 40 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-[#0a0a0a] border-2 border-red-500 p-12 rounded-3xl w-full max-w-md text-center shadow-[0_0_100px_rgba(239,68,68,0.2)]"
+            >
+              <h2 className="text-red-500 text-5xl font-bold uppercase tracking-tighter mb-2">Game Over</h2>
+              <p className="text-white/50 text-sm uppercase tracking-widest mb-8">Sua jornada na academia terminou</p>
+              
+              <div className="bg-white/5 rounded-2xl p-6 mb-8 border border-white/10">
+                <div className="text-xs uppercase tracking-widest opacity-50 mb-1">Pontuação Final</div>
+                <div className="text-6xl font-bold text-[#00f2ff] font-mono">{stats.kills}</div>
+                <div className="text-xs uppercase tracking-widest opacity-50 mt-1">Bots Eliminados</div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleRestart}
+                  className="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)] active:scale-95"
+                >
+                  Reiniciar Partida
+                </button>
+                <button
+                  onClick={() => {
+                    setShowGameOver(false);
+                    setGameState('menu');
+                  }}
+                  className="w-full py-4 bg-white/5 hover:bg-white/10 text-white rounded-xl font-bold uppercase tracking-widest transition-all border border-white/10 active:scale-95"
+                >
+                  Voltar ao Menu
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
 
         {showModal && currentQuestion && (
           <motion.div 
@@ -1098,7 +1326,129 @@ export default function App() {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4"
           >
-            {/* ... todo o conteúdo do modal permanece exatamente igual ... */}
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ 
+                scale: 1, 
+                y: 0,
+                x: feedback === 'wrong' || feedback === 'timeout' ? [0, -10, 10, -10, 10, 0] : 0
+              }}
+              transition={{
+                x: { duration: 0.4, ease: "easeInOut" }
+              }}
+              className={`relative bg-[#0a0a0a]/80 border-2 ${
+                feedback === 'correct' ? 'border-green-500 shadow-[0_0_40px_rgba(34,197,94,0.3)]' : 
+                feedback === 'wrong' || feedback === 'timeout' ? 'border-red-500 shadow-[0_0_40px_rgba(239,68,68,0.3)]' : 
+                'border-[#00f2ff] shadow-[0_0_40px_rgba(0,242,255,0.2)]'
+              } p-8 rounded-[2rem] w-full max-w-md backdrop-blur-xl`}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/10">
+                  <Star className={`w-3 h-3 ${
+                    currentQuestion.difficulty === 'easy' ? 'text-green-400' : 
+                    currentQuestion.difficulty === 'medium' ? 'text-yellow-400' : 'text-red-400'
+                  }`} />
+                  <span className="text-[10px] uppercase font-black tracking-widest text-white/60">
+                    {currentQuestion.difficulty === 'easy' ? 'Fácil' : 
+                     currentQuestion.difficulty === 'medium' ? 'Médio' : 'Difícil'}
+                  </span>
+                </div>
+
+                <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${
+                  timeLeft <= 3 ? 'bg-red-500/20 border-red-500 text-red-400 animate-pulse' : 'bg-white/5 border-white/10 text-white/60'
+                }`}>
+                  <Timer className="w-3 h-3" />
+                  <span className="text-[10px] font-black tracking-widest">{timeLeft}s</span>
+                </div>
+              </div>
+
+              {combo > 1 && !feedback && (
+                <motion.div 
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute -top-4 -right-4 bg-[#bc13fe] text-white px-4 py-2 rounded-xl font-black text-xs shadow-lg rotate-12 border-2 border-white/20"
+                >
+                  COMBO X{combo}
+                </motion.div>
+              )}
+
+              <h2 className="text-[#00f2ff] text-[10px] uppercase tracking-[0.4em] mb-4 text-center font-black opacity-60">Desafio da Academia</h2>
+              
+              {feedback === 'correct' && (
+                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                  {particles.map((p) => (
+                    <motion.div
+                      key={p.id}
+                      initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
+                      animate={{ x: p.x * 4, y: p.y * 4, opacity: 0, scale: 0 }}
+                      transition={{ duration: 1, ease: "easeOut" }}
+                      className="absolute left-1/2 top-1/2 w-2 h-2 rounded-full"
+                      style={{ backgroundColor: p.color }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <div className="text-5xl font-black text-white text-center mb-10 font-mono tracking-tighter">
+                {currentQuestion.text}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {currentQuestion.options.map((opt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => !feedback && handleAnswer(opt)}
+                    disabled={!!feedback}
+                    className={`group relative p-6 rounded-2xl text-2xl font-black font-mono transition-all border-2 overflow-hidden ${
+                      feedback === 'correct' && opt === currentQuestion.answer 
+                        ? 'bg-green-500 border-green-400 text-white scale-105 z-10'
+                        : feedback === 'wrong' && opt === currentQuestion.answer
+                        ? 'bg-green-500/20 border-green-500 text-green-400'
+                        : feedback === 'wrong' && opt !== currentQuestion.answer
+                        ? 'bg-red-500/10 border-red-500/30 text-red-400/30'
+                        : 'bg-white/5 border-white/10 text-white hover:bg-[#00f2ff]/10 hover:border-[#00f2ff] hover:scale-[1.02] active:scale-95'
+                    }`}
+                  >
+                    {opt}
+                    <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                ))}
+              </div>
+
+              <AnimatePresence>
+                {feedback && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="mt-8 p-6 bg-white/5 rounded-2xl border border-white/10"
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      {feedback === 'correct' ? (
+                        <Star className="w-5 h-5 text-green-400 fill-green-400" />
+                      ) : (
+                        <AlertCircle className="w-5 h-5 text-red-400" />
+                      )}
+                      <span className={`font-black uppercase tracking-widest text-sm ${feedback === 'correct' ? 'text-green-400' : 'text-red-400'}`}>
+                        {feedback === 'correct' ? 'Excelente! +5 Munições' : feedback === 'timeout' ? 'Tempo Esgotado! -1 Vida' : 'Ops, Errou! -1 Vida'}
+                      </span>
+                    </div>
+                    
+                    <p className="text-white/60 text-xs leading-relaxed">
+                      {feedback === 'correct' 
+                        ? `Você acertou! Ganhou +${5 + Math.floor(combo / 2)} de munição pelo seu desempenho.`
+                        : currentQuestion.explanation}
+                    </p>
+                    
+                    {feedback === 'correct' && combo > 1 && (
+                      <div className="mt-2 text-[10px] font-black text-[#bc13fe] uppercase tracking-widest">
+                        Bônus de Combo Ativo!
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

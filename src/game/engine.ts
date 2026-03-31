@@ -2,7 +2,7 @@
  * TRYHARD ACADEMY - Game Engine
  * Pure JavaScript 2D Arena Base
  * VERSÃO FINAL CORRIGIDA - HOST AUTHORITATIVE MULTIPLAYER
- * Correções aplicadas: colisão de projéteis, dano em players, sincronização de vida, ownerId consistente
+ * Correções aplicadas: colisão de projéteis, dano em players, sincronização de vida, ownerId consistente, tela preta corrigida
  */
 
 import { ParticlePool, Trail, ScreenShake, Lighting } from './effects';
@@ -460,7 +460,7 @@ export class Game {
     starSpawnTimer: number = 0;
     kills: number = 0;
     fps: number = 60;
-    fpsHistory: number[] = [];                    // <-- Propriedade adicionada aqui
+    fpsHistory: number[] = [];
 
     private lastHitTimestamps: Map<string, number> = new Map();
 
